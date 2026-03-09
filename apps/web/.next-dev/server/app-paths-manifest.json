@@ -1,0 +1,7 @@
+{
+  "/crawls/[id]/overview/page": "app/crawls/[id]/overview/page.js",
+  "/crawls/[id]/content/page": "app/crawls/[id]/content/page.js",
+  "/crawls/[id]/links/page": "app/crawls/[id]/links/page.js",
+  "/crawls/[id]/performance/page": "app/crawls/[id]/performance/page.js",
+  "/settings/page": "app/settings/page.js"
+}

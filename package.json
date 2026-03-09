@@ -1,0 +1,22 @@
+{
+  "name": "seo-spider",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "docker compose -f docker/docker-compose.yml up",
+    "redis:garnet": "powershell -ExecutionPolicy Bypass -File .\\local\\start-garnet.ps1",
+    "dev:local": "concurrently \"cd apps/web && npm run dev\" \"cd apps/worker && npm run dev\"",
+    "build": "npm run build --workspace @seo-spider/shared && npm run build --workspace @seo-spider/web && npm run build --workspace @seo-spider/worker",
+    "lint": "npm run lint --workspace @seo-spider/shared && npm run lint --workspace @seo-spider/web && npm run lint --workspace @seo-spider/worker"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "typescript": "^5.0.0"
+  }
+}

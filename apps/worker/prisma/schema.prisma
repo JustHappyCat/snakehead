@@ -1,0 +1,315 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Crawl {
+  id            String   @id @default(cuid())
+  startUrl      String
+  status        CrawlStatus @default(PENDING)
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  settingsJson  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // SERP tracking settings
+  enableSerpTracking Boolean   @default(true)
+  serpQueryType      QueryType @default(AUTO)
+  serpCheckFrequency Int       @default(7)
+
+  pages         Page[]
+  links         Link[]
+  issues        Issue[]
+  events        Event[]
+  serpData      PageSerpData[]
+
+  @@map("crawls")
+}
+
+model Page {
+  id               String   @id @default(cuid())
+  crawlId          String
+  url              String
+  finalUrl         String?
+  statusCode       Int?
+  contentType      String?
+  title            String?
+  metaDescription  String?
+  metaKeywords     String?
+  canonical        String?
+  robotsMeta       String?
+  xRobotsTag       String?
+  viewport         String?
+  htmlLang         String?
+  wordCount        Int?
+  loadTimeMs       Int?
+  depth            Int      @default(0)
+  isInternal       Boolean  @default(true)
+  h1Count          Int      @default(0)
+  h2Count          Int      @default(0)
+  internalLinkCount Int     @default(0)
+  externalLinkCount Int     @default(0)
+  imageCount       Int      @default(0)
+  imagesWithoutAlt Int      @default(0)
+  hreflangCount    Int      @default(0)
+  hasStructuredData Boolean @default(false)
+  structuredDataTypesJson String?
+  hasOpenGraph    Boolean   @default(false)
+  hasTwitterCard  Boolean   @default(false)
+  hasViewport     Boolean   @default(false)
+  hasHreflang     Boolean   @default(false)
+  urlHash          String?
+  createdAt        DateTime @default(now())
+
+  crawl            Crawl    @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+  serpData         PageSerpData[]
+
+  @@index([crawlId])
+  @@index([statusCode])
+  @@index([depth])
+  @@index([urlHash])
+  @@index([crawlId, statusCode])
+  @@index([crawlId, depth])
+  @@index([crawlId, urlHash])
+  @@unique([crawlId, url])
+  @@index([url])
+  @@map("pages")
+}
+
+model Link {
+  id          String   @id @default(cuid())
+  crawlId     String
+  fromUrl     String
+  toUrl       String
+  fromUrlHash String?
+  toUrlHash   String?
+  isInternal  Boolean  @default(true)
+  rel         String?
+  anchorText  String?
+  isNofollow  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  crawl       Crawl    @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+
+  @@index([crawlId])
+  @@index([fromUrlHash])
+  @@index([toUrlHash])
+  @@index([crawlId, fromUrl])
+  @@index([crawlId, toUrl])
+  @@map("links")
+}
+
+model Issue {
+  id            String   @id @default(cuid())
+  crawlId       String
+  issueType     String
+  url           String
+  urlHash       String?
+  severity      Severity
+  impact        Impact
+  difficulty    Difficulty
+  title         String
+  explanation   String
+  fixStepsJson  String?
+  createdAt     DateTime @default(now())
+
+  crawl         Crawl    @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+
+  @@index([crawlId])
+  @@index([issueType])
+  @@index([severity])
+  @@index([crawlId, severity])
+  @@index([crawlId, issueType])
+  @@index([urlHash])
+  @@map("issues")
+}
+
+model Event {
+  id        String   @id @default(cuid())
+  crawlId   String
+  ts        DateTime @default(now())
+  level     LogLevel
+  message   String
+
+  crawl     Crawl    @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+
+  @@index([crawlId])
+  @@index([ts])
+  @@map("events")
+}
+
+enum CrawlStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+// SERP Feature Detection Models
+
+enum SerpFeature {
+  FEATURED_SNIPPET
+  LOCAL_PACK
+  KNOWLEDGE_PANEL
+  IMAGE_PACK
+  VIDEO_PACK
+  PEOPLE_ALSO_ASK
+  RELATED_SEARCHES
+  TOP_STORIES
+  SHOPPING_RESULTS
+  SITELINKS
+  REVIEWS
+  RATING_STARS
+  FAQ_SCHEMA
+  EVENT_SCHEMA
+  PRODUCT_SCHEMA
+  RECIPE_SCHEMA
+  HOW_TO_SCHEMA
+  JOB_LISTINGS
+  FINANCE_BOX
+  CALCULATOR
+  CONVERTER
+  FLIGHT_BOX
+  HOTEL_PACK
+  NONE
+}
+
+enum QueryType {
+  AUTO
+  TITLE
+  H1
+  CUSTOM
+  KEYWORD
+}
+
+enum SerpChangeType {
+  INITIAL
+  FEATURE_GAINED
+  FEATURE_LOST
+  POSITION_GAINED
+  POSITION_LOST
+  SNIPPET_GAINED
+  SNIPPET_LOST
+  NO_CHANGE
+  MIXED
+}
+
+enum SerpImpact {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+  MIXED
+}
+
+model PageSerpData {
+  id                String       @id @default(cuid())
+  pageId            String
+  page              Page         @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  crawlId           String
+  crawl             Crawl        @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+  
+  // Query information
+  query             String
+  queryType         QueryType    @default(AUTO)
+  
+  // SERP features detected
+  features          SerpFeature[]
+  
+  // Position data
+  position          Int?
+  isFeatured        Boolean      @default(false)
+  isTopResult       Boolean      @default(false)
+  
+  // Feature-specific data
+  featuredSnippet   Json?
+  localPack         Json?
+  knowledgePanel    Json?
+  
+  // Competition data
+  competitors       Json?
+  
+  // Metadata
+  serpApiProvider   String       @default("serpapi")
+  serpApiCost       Float        @default(0)
+  apiCallId         String?
+  
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  
+  history           SerpHistory[]
+  
+  @@unique([pageId, crawlId, query])
+  @@index([pageId])
+  @@index([crawlId])
+  @@index([query])
+  @@map("page_serp_data")
+}
+
+model SerpHistory {
+  id                String       @id @default(cuid())
+  pageSerpDataId    String
+  pageSerpData      PageSerpData @relation(fields: [pageSerpDataId], references: [id], onDelete: Cascade)
+  
+  // Change tracking
+  featuresBefore    SerpFeature[]
+  featuresAfter     SerpFeature[]
+  featuresAdded     SerpFeature[]
+  featuresRemoved   SerpFeature[]
+  
+  // Position tracking
+  positionBefore    Int?
+  positionAfter     Int?
+  positionChange    Int?
+  
+  // Featured snippet tracking
+  wasFeaturedBefore Boolean      @default(false)
+  wasFeaturedAfter  Boolean      @default(false)
+  gainedSnippet     Boolean      @default(false)
+  lostSnippet       Boolean      @default(false)
+  
+  // Analysis
+  changeType        SerpChangeType
+  impact            SerpImpact   @default(NEUTRAL)
+  notes             String?
+  
+  // Metadata
+  checkDate         DateTime     @default(now())
+  crawlId           String?
+  
+  @@index([pageSerpDataId])
+  @@index([checkDate])
+  @@index([crawlId])
+  @@map("serp_history")
+}
+
+enum Impact {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+  DEBUG
+}
