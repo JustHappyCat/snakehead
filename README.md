@@ -1,5 +1,5 @@
 ﻿# snakehead
-
+<img width="332" height="98" alt="image" src="https://github.com/user-attachments/assets/5cd6cc78-5ebd-4134-b0ea-ddd2afc4ff39" />
 SEO crawling and audit platform built as a monorepo with a Next.js web app, a background crawl worker, PostgreSQL for persistence, and Redis/BullMQ for queued execution.
 
 This project crawls websites, extracts on-page SEO signals, logs technical issues, measures crawl performance, audits security headers, supports competitor comparisons, exports crawl data, and includes optional AI and SERP analysis features.
