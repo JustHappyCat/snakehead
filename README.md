@@ -5,6 +5,14 @@ SEO crawling and audit platform built as a monorepo with a Next.js web app, a ba
 
 This project crawls websites, extracts on-page SEO signals, logs technical issues, measures crawl performance, audits security headers, supports competitor comparisons, exports crawl data, and includes optional AI and SERP analysis features.
 
+<img width="1920" height="4096" alt="image" src="https://github.com/user-attachments/assets/3f7d98d2-bfea-4184-8329-63968d7f3b36" />
+
+
+<img width="1920" height="2191" alt="image" src="https://github.com/user-attachments/assets/765a3c18-0885-48d5-9658-d878384688c9" />
+
+
+
+
 ## What It Does
 
 - Starts crawls from a seed URL and traverses internal links with configurable depth and page limits.
