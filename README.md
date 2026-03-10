@@ -437,16 +437,6 @@ At a high level:
 - Queue mode defaults differ between development and production; be explicit with `QUEUE_MODE` when deploying.
 
 
-## Publish Checklist
-
-1. Add real authentication and authorization.
-2. Add `.env.example` files for `apps/web` and `apps/worker`.
-3. Add Prisma migrations if you plan to evolve the schema publicly.
-4. Remove secrets and local-only values from tracked files.
-5. Add screenshots or GIFs from the dashboard.
-6. Add license and contribution guidelines.
-7. Add CI for lint/build checks.
-
 ## License
 
 Apache License 2.0
