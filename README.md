@@ -427,11 +427,8 @@ At a high level:
 - Some platform features such as email and AI require external credentials before they become functional.
 - Queue mode defaults differ between development and production; be explicit with `QUEUE_MODE` when deploying.
 
-## Suggested GitHub Repo Description
 
-`SEO crawler and audit platform with crawl dashboards, issue detection, competitor comparison, security audits, AI recommendations, and SERP analysis.`
-
-## Suggested Publish Checklist
+## Publish Checklist
 
 1. Add real authentication and authorization.
 2. Add `.env.example` files for `apps/web` and `apps/worker`.
@@ -443,5 +440,5 @@ At a high level:
 
 ## License
 
-Add your preferred license before publishing to GitHub.
+Apache License 2.0
 
