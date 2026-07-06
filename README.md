@@ -16,9 +16,13 @@ This project crawls websites, extracts on-page SEO signals, logs technical issue
 ## What It Does
 
 - Starts crawls from a seed URL and traverses internal links with configurable depth and page limits.
+- Seeds the crawl frontier from XML sitemaps: sitemaps declared in `robots.txt` (or the conventional `/sitemap.xml`) are fetched and parsed, including recursive sitemap-index handling and gzip-compressed sitemaps.
 - Extracts metadata and content signals such as titles, meta descriptions, canonicals, headings, internal links, images, structured data, Open Graph, Twitter cards, viewport tags, and hreflang usage.
-- Detects SEO issues including broken pages, redirect chains, missing metadata, duplicate metadata, low word count, canonical mismatches, not-indexable pages, dead-end pages, broken internal links, and slow pages.
+- Detects SEO issues including broken pages, redirect chains, missing metadata, duplicate metadata, low word count, canonical mismatches, not-indexable pages, dead-end pages, broken internal links, broken external links, near-duplicate content, and slow pages.
+- Validates external links after the crawl and reports unreachable targets as `BROKEN_EXTERNAL_LINK` issues.
+- Detects near-duplicate content with SimHash fingerprints, so pages with substantially similar body text are grouped even when titles and metadata differ.
 - Measures crawl performance and surfaces slowest pages, average measured timing, and link/content context.
+- Runs an optional performance audit with Core Web Vitals (LCP, CLS, INP, performance score) via the Google PageSpeed Insights API or a local Lighthouse run, shown in a Core Web Vitals table on the crawl performance page.
 - Runs an optional security audit for transport security, security headers, cookie flags, permissive CORS, server fingerprinting, and common exposed ports.
 - Supports competitor crawl groups and generates comparison reports with CSV/PDF export.
 - Supports optional AI recommendations for issues using OpenAI-backed prompts plus database caching.
@@ -31,7 +35,7 @@ This project crawls websites, extracts on-page SEO signals, logs technical issue
 - `Indexing`: Indexability and crawlability signals.
 - `Content`: On-page metadata, headings, images, and content quality indicators.
 - `Links`: Internal/external link structure and link-related issues.
-- `Performance`: Measured crawl timing, slow pages, page-weight context, and exports.
+- `Performance`: Measured crawl timing, slow pages, page-weight context, a Core Web Vitals table (when the performance audit is enabled), and exports.
 - `SERP`: SERP data, feature detection, history, and recommendations.
 - `Comparisons`: Side-by-side crawl comparisons across sites in a comparison group.
 - `Exports`: CSV exports for pages, links, and issues plus PDF comparison export.
@@ -73,7 +77,7 @@ snakehead/
 2. The web app stores the crawl in PostgreSQL with `PENDING` status.
 3. The crawl is queued through BullMQ in Redis mode, or picked up by database polling in development mode.
 4. The worker claims the crawl and marks it `RUNNING`.
-5. The worker builds a URL frontier, optionally fetches and respects `robots.txt`, and starts processing pages.
+5. The worker builds a URL frontier, optionally fetches and respects `robots.txt`, seeds the frontier from XML sitemaps, and starts processing pages.
 6. Each page is fetched either through plain HTTP or Playwright-based JS rendering.
 7. HTML is parsed and normalized into structured page metadata and content signals.
 8. Issues, links, crawl events, and page records are persisted to PostgreSQL.
@@ -98,6 +102,13 @@ snakehead/
 If `QUEUE_MODE` is not set, the app defaults to `database` in development and `redis` otherwise.
 
 ## Main Implemented Features
+
+### URL discovery
+
+- Internal link traversal with depth and page limits
+- XML sitemap seeding from `robots.txt`-declared sitemaps or `/sitemap.xml`
+- Recursive `<sitemapindex>` processing with per-crawl sitemap and URL caps
+- Gzip-compressed (`.xml.gz`) sitemap support
 
 ### Crawl extraction
 
@@ -131,13 +142,15 @@ If `QUEUE_MODE` is not set, the app defaults to `database` in development and `r
 - Not indexable pages
 - Slow pages
 - Soft 404 detection
-- Duplicate content
+- Near-duplicate content via SimHash fingerprints (replaces the old exact title+meta matching)
 - Duplicate titles
 - Duplicate meta descriptions
 - Orphan pages
 - Broken internal links
+- Broken external links (post-crawl validation with HEAD requests, GET fallback)
 - Internal links pointing to redirects
 - Dead-end pages
+- Poor Core Web Vitals: `POOR_LCP`, `POOR_CLS`, `POOR_INP`, `LOW_PERFORMANCE_SCORE` (when the performance audit is enabled)
 
 ### Security audit
 
@@ -148,6 +161,14 @@ If `QUEUE_MODE` is not set, the app defaults to `database` in development and `r
 - Permissive CORS checks
 - Technology fingerprint exposure via headers
 - Common open port scan
+
+### Performance audit (Core Web Vitals)
+
+- Opt-in per crawl via the `performanceAudit` setting, with `performanceMode` (`psi` or `lighthouse`) and `performanceMaxUrls` (default 25) controlling scope
+- PageSpeed Insights API client for field/lab Core Web Vitals (LCP, CLS, INP, performance score); a `PSI_API_KEY` raises quota limits, and a mock provider is available for development
+- Local Lighthouse runner as an alternative for staging/localhost sites Google's servers cannot reach; runs Lighthouse as a subprocess against a system Chrome/Edge/Chromium or the Playwright Chromium
+- Results stored as `PagePerformance` rows and surfaced in a Core Web Vitals table on the crawl performance page
+- Emits `POOR_LCP` (> 2.5s), `POOR_CLS` (> 0.1), `POOR_INP` (> 200ms), and `LOW_PERFORMANCE_SCORE` (< 50) issues
 
 ### Reporting and export
 
@@ -235,6 +256,15 @@ cd ../..
 npm run dev:local
 ```
 
+### Updating an existing install
+
+After pulling recent changes, re-apply the Prisma schema — the new `PagePerformance` model (performance audit) requires it:
+
+```bash
+cd apps/web
+npx prisma db push
+```
+
 ## Environment Variables
 
 ### Required for basic local development
@@ -285,6 +315,14 @@ SERP_DAILY_COST_LIMIT=10
 RESEND_API_KEY=
 EMAIL_FROM=noreply@example.com
 EMAIL_FROM_NAME=snakehead
+
+# Performance audit / Core Web Vitals (worker)
+# PSI_API_KEY: free key from https://developers.google.com/speed/docs/insights/v5/get-started
+# PERFORMANCE_API_PROVIDER: psi | mock (defaults to psi when a key is set, mock otherwise)
+PSI_API_KEY=
+PERFORMANCE_API_PROVIDER=mock
+# CHROME_PATH: optional override for the browser used by the local Lighthouse runner
+CHROME_PATH=
 ```
 
 ## Useful Commands
@@ -372,6 +410,7 @@ Primary tables/models:
 - `PageSerpData`
 - `SerpHistory`
 - `AIRecommendationCache`
+- `PagePerformance`
 
 At a high level:
 
@@ -379,6 +418,7 @@ At a high level:
 - A `Crawl` owns many `Page`, `Link`, `Issue`, and `Event` records.
 - Comparison features group multiple crawls under `ComparisonGroup`.
 - SERP tracking attaches page-level search data to `PageSerpData`.
+- Performance audit results attach Core Web Vitals metrics to `PagePerformance` per crawl.
 
 ## Implementation Notes
 
@@ -390,6 +430,33 @@ At a high level:
 - Timeout: `10000ms`
 - Respect robots.txt: `true`
 - Default excluded extensions: `.pdf`, `.zip`, `.exe`, `.jpg`, `.png`, `.gif`
+
+### Sitemap seeding
+
+- Before traversal starts, sitemaps listed in `robots.txt` are fetched; if none are declared, `/sitemap.xml` is tried.
+- `<sitemapindex>` files are followed recursively, and gzip-compressed sitemaps are decompressed transparently.
+- Discovered URLs are added to the frontier at depth 1 (after the usual safety checks), capped at 5000 URLs across at most 50 sitemap files per crawl.
+- Sitemap fetch/parse failures are logged as crawl events and never fail the crawl.
+
+### External link validation
+
+- External link targets are collected during the crawl (up to 1000 unique targets) and validated after traversal finishes.
+- Validation uses HEAD requests with a GET fallback when HEAD is rejected, at a concurrency of 5.
+- Unreachable or error-status targets produce `BROKEN_EXTERNAL_LINK` issues attributed to each source page linking to them.
+
+### Near-duplicate content detection
+
+- Page body text is fingerprinted with 64-bit SimHash over 3-word shingles (pages under 50 words are skipped).
+- Pages within a Hamming distance of 6 bits (~90% similarity) are grouped as duplicates; banding (8 bands of 8 bits) keeps grouping close to linear instead of O(n²).
+- Groups are reported as `DUPLICATE_CONTENT` issues. This replaces the previous exact title+meta-description matching, so reworded but substantially identical pages are now caught.
+
+### Performance audit workflow
+
+1. The user enables the audit per crawl (`performanceAudit`), picks a mode (`performanceMode`: `psi` or `lighthouse`), and optionally adjusts the sample size (`performanceMaxUrls`, default 25).
+2. After the crawl completes, a sample of crawled pages is audited.
+3. `psi` mode calls the PageSpeed Insights API (mock provider used in development when no `PSI_API_KEY` is set); `lighthouse` mode runs Lighthouse locally as a subprocess, which also works for staging/localhost URLs but costs roughly 15–45s of local CPU per page.
+4. Metrics (LCP, CLS, INP, performance score) are stored as `PagePerformance` rows and rendered in the Core Web Vitals table on the performance page.
+5. Threshold violations emit `POOR_LCP`, `POOR_CLS`, `POOR_INP`, and `LOW_PERFORMANCE_SCORE` issues.
 
 ### Performance timing behavior
 
@@ -423,9 +490,11 @@ At a high level:
 ## Current Caveats
 
 - Authentication is currently bypassed in `apps/web/lib/auth.ts`, which is acceptable for local development but should be replaced before a real public deployment.
-- The repository uses Prisma in both web and worker apps; schema and migration discipline should be tightened before production release.
+- The web and worker apps each carry a Prisma schema; the two files are now kept identical (earlier drift between them broke fresh installs). If you change one, mirror the change in the other.
+- After pulling recent changes, run `npx prisma db push` (from `apps/web`) — the new `PagePerformance` model requires a schema update on existing databases.
 - The worker script named `test` is a utility script, not a comprehensive automated test suite.
-- Some platform features such as email and AI require external credentials before they become functional.
+- Some platform features such as email and AI require external credentials before they become functional. The performance audit falls back to mock data without a `PSI_API_KEY` (in `psi` mode), and `lighthouse` mode needs a Chrome/Edge/Chromium binary on the worker host.
+- Local Lighthouse runs are CPU-heavy (~15–45s per page), so keep `performanceMaxUrls` modest in that mode.
 - Queue mode defaults differ between development and production; be explicit with `QUEUE_MODE` when deploying.
 
 

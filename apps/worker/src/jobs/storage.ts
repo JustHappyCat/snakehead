@@ -1,5 +1,6 @@
-import { Prisma, PrismaClient, CrawlStatus, Severity, Impact, Difficulty } from '@prisma/client'
+import { Prisma, PrismaClient, CrawlStatus, Severity, Impact, Difficulty, PerformanceSource } from '@prisma/client'
 import { PageData, IssueData } from '../extract/page-extractor'
+import { PerformanceMetrics } from '../audit/performance-types'
 
 const prisma = new PrismaClient()
 
@@ -209,6 +210,38 @@ export class CrawlStorage {
         anchorText: l.anchorText,
         isNofollow: l.isNofollow,
       })),
+    })
+  }
+
+  async savePerformance(url: string, metrics: PerformanceMetrics): Promise<void> {
+    const source = metrics.source as PerformanceSource
+    const values = {
+      performanceScore: metrics.performanceScore ?? null,
+      lcpMs: metrics.lcpMs ?? null,
+      cls: metrics.cls ?? null,
+      inpMs: metrics.inpMs ?? null,
+      tbtMs: metrics.tbtMs ?? null,
+      fcpMs: metrics.fcpMs ?? null,
+      speedIndexMs: metrics.speedIndexMs ?? null,
+      ttfbMs: metrics.ttfbMs ?? null,
+      fetchedAt: new Date(),
+    }
+
+    await prisma.pagePerformance.upsert({
+      where: {
+        crawlId_url_source: {
+          crawlId: this.crawlId,
+          url,
+          source,
+        },
+      },
+      update: values,
+      create: {
+        crawlId: this.crawlId,
+        url,
+        source,
+        ...values,
+      },
     })
   }
 

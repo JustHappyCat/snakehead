@@ -136,8 +136,9 @@ export class RobotsParser {
   }
 
   private matchPattern(path: string, pattern: string): boolean {
-    if (pattern === '/') {
-      return path === '/'
+    // An empty pattern (e.g. a bare "Disallow:" line) matches nothing per the robots spec
+    if (pattern === '') {
+      return false
     }
 
     if (pattern.endsWith('/')) {

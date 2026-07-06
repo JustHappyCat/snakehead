@@ -88,6 +88,7 @@ model Crawl {
   events        Event[]
   comparisonResults ComparisonResult[]
   serpData      PageSerpData[]
+  performanceRecords PagePerformance[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -443,4 +444,36 @@ model SerpHistory {
   @@index([checkDate])
   @@index([crawlId])
   @@map("serp_history")
+}
+
+// Core Web Vitals / Lighthouse performance data
+
+enum PerformanceSource {
+  PSI_LAB
+  CRUX_FIELD
+  LIGHTHOUSE_LOCAL
+}
+
+model PagePerformance {
+  id               String   @id @default(cuid())
+  crawlId          String
+  url              String
+  source           PerformanceSource
+
+  performanceScore Int?
+  lcpMs            Int?
+  cls              Float?
+  inpMs            Int?
+  tbtMs            Int?
+  fcpMs            Int?
+  speedIndexMs     Int?
+  ttfbMs           Int?
+
+  fetchedAt        DateTime @default(now())
+
+  crawl            Crawl    @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+
+  @@unique([crawlId, url, source])
+  @@index([crawlId])
+  @@map("page_performance")
 }

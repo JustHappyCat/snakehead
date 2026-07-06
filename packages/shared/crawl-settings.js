@@ -9,6 +9,10 @@ exports.DEFAULT_CRAWL_SETTINGS = {
     concurrency: 5,
     timeout: 10000,
     respectRobots: true,
+    securityAudit: false,
+    performanceAudit: false,
+    performanceMode: 'psi',
+    performanceMaxUrls: 25,
     allowlist: [],
     denylist: [],
     excludeExtensions: ['.pdf', '.zip', '.exe', '.jpg', '.png', '.gif'],
@@ -31,6 +35,13 @@ function validateCrawlSettings(settings) {
         validated.timeout = exports.DEFAULT_CRAWL_SETTINGS.timeout;
     }
     validated.excludeExtensions = validated.excludeExtensions || exports.DEFAULT_CRAWL_SETTINGS.excludeExtensions;
+    if (validated.performanceMode !== 'psi' && validated.performanceMode !== 'lighthouse') {
+        validated.performanceMode = exports.DEFAULT_CRAWL_SETTINGS.performanceMode;
+    }
+    const maxUrls = validated.performanceMaxUrls;
+    if (typeof maxUrls !== 'number' || !Number.isFinite(maxUrls) || maxUrls < 1 || maxUrls > 100) {
+        validated.performanceMaxUrls = exports.DEFAULT_CRAWL_SETTINGS.performanceMaxUrls;
+    }
     return validated;
 }
 function parseSettingsJson(json) {

@@ -45,6 +45,8 @@ export function NewCrawlDialog({
   const [respectRobots, setRespectRobots] = useState(true)
   const [jsRendering, setJsRendering] = useState(false)
   const [securityAudit, setSecurityAudit] = useState(false)
+  const [performanceAudit, setPerformanceAudit] = useState(false)
+  const [performanceMode, setPerformanceMode] = useState<'psi' | 'lighthouse'>('psi')
   const [mode, setMode] = useState<CrawlMode>(initialMode)
   const [isLoading, setIsLoading] = useState(false)
   const [comparisonMode, setComparisonMode] = useState(false)
@@ -76,6 +78,8 @@ export function NewCrawlDialog({
             respectRobots,
             jsRendering,
             securityAudit,
+            performanceAudit,
+            performanceMode,
             ...COMMON_SETTINGS,
           }
         : {
@@ -84,6 +88,7 @@ export function NewCrawlDialog({
             respectRobots: true,
             jsRendering: false,
             securityAudit: false,
+            performanceAudit: false,
             ...COMMON_SETTINGS,
           }
 
@@ -99,6 +104,8 @@ export function NewCrawlDialog({
       setComparisonGroupName('')
       setCompetitorUrls(['', '', ''])
       setSecurityAudit(false)
+      setPerformanceAudit(false)
+      setPerformanceMode('psi')
     } catch (error) {
       console.error('Failed to start crawl:', error)
       alert(error instanceof Error ? error.message : 'Failed to start crawl')
@@ -309,6 +316,52 @@ export function NewCrawlDialog({
                     <p className="pl-6 text-xs text-muted-foreground">
                       Checks HTTPS, security headers, cookie flags, CORS exposure, server fingerprinting, and common open ports.
                     </p>
+
+                    <div className="flex items-center space-x-2 pt-1">
+                      <input
+                        type="checkbox"
+                        id="performanceAudit"
+                        checked={performanceAudit}
+                        onChange={(e) => setPerformanceAudit(e.target.checked)}
+                        className="rounded border-gray-300"
+                      />
+                      <Label htmlFor="performanceAudit" className="text-sm">
+                        Run Performance Audit (Core Web Vitals)
+                      </Label>
+                    </div>
+                    <p className="pl-6 text-xs text-muted-foreground">
+                      Collects Lighthouse metrics and real-user CrUX data (LCP, CLS, INP) for a sample of key pages after the crawl.
+                    </p>
+
+                    {performanceAudit && (
+                      <div className="pl-6 pt-1">
+                        <div className="grid grid-cols-2 rounded-md border p-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={performanceMode === 'psi' ? 'default' : 'ghost'}
+                            className="w-full"
+                            onClick={() => setPerformanceMode('psi')}
+                          >
+                            PageSpeed API
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={performanceMode === 'lighthouse' ? 'default' : 'ghost'}
+                            className="w-full"
+                            onClick={() => setPerformanceMode('lighthouse')}
+                          >
+                            Local Lighthouse
+                          </Button>
+                        </div>
+                        <p className="pt-1 text-xs text-muted-foreground">
+                          {performanceMode === 'psi'
+                            ? 'Uses Google’s PageSpeed Insights API. Includes real-user CrUX data, but only works for publicly reachable URLs.'
+                            : 'Runs Lighthouse on the crawl worker. Works for staging and private sites, but is slower and lab-only (no real-user data).'}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

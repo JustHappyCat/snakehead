@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.normalizeUrl = normalizeUrl;
 exports.isValidUrl = isValidUrl;
@@ -30,7 +30,7 @@ function normalizeUrl(url, baseUrl) {
             searchParams.delete(param.toLowerCase());
             searchParams.delete(param.toUpperCase());
         }
-        parsedUrl.search = searchParams.toString().toLowerCase();
+        parsedUrl.search = searchParams.toString();
         return parsedUrl.href;
     }
     catch {

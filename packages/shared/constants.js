@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.COMMON_SEO_ISSUES = exports.CRAWL_STATUS_COLORS = exports.DEFAULT_CRAWL_SETTINGS = exports.DIFFICULTY_LEVELS = exports.IMPACT_LEVELS = exports.SEVERITY_LEVELS = void 0;
+exports.COMMON_SEO_ISSUES = exports.CRAWL_STATUS_COLORS = exports.DIFFICULTY_LEVELS = exports.IMPACT_LEVELS = exports.SEVERITY_LEVELS = void 0;
 exports.SEVERITY_LEVELS = {
     CRITICAL: 4,
     HIGH: 3,
@@ -16,16 +16,6 @@ exports.DIFFICULTY_LEVELS = {
     HARD: 3,
     MEDIUM: 2,
     EASY: 1,
-};
-exports.DEFAULT_CRAWL_SETTINGS = {
-    maxPages: 500,
-    maxDepth: 5,
-    concurrency: 5,
-    timeout: 10000,
-    respectRobots: true,
-    allowlist: [],
-    denylist: [],
-    excludeExtensions: ['.pdf', '.zip', '.exe', '.jpg', '.png', '.gif'],
 };
 exports.CRAWL_STATUS_COLORS = {
     PENDING: 'text-yellow-600',

@@ -69,6 +69,7 @@ export class PageExtractor {
     pageData?: PageData
     issues: IssueData[]
     links: { url: string; isInternal: boolean; anchorText?: string; isNofollow: boolean }[]
+    contentText?: string
   }> {
     const fetchResult = await this.fetcher.fetch(url)
     const issues: IssueData[] = []
@@ -214,7 +215,7 @@ export class PageExtractor {
       hasHreflang: (metadata?.hreflangLinks?.length || 0) > 0,
     }
 
-    return { pageData, issues, links }
+    return { pageData, issues, links, contentText: content?.text }
   }
 
   private normalizeHost(hostname: string): string {

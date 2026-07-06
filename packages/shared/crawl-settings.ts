@@ -7,6 +7,9 @@ export const DEFAULT_CRAWL_SETTINGS: CrawlSettings = {
   timeout: 10000,
   respectRobots: true,
   securityAudit: false,
+  performanceAudit: false,
+  performanceMode: 'psi',
+  performanceMaxUrls: 25,
   allowlist: [],
   denylist: [],
   excludeExtensions: ['.pdf', '.zip', '.exe', '.jpg', '.png', '.gif'],
@@ -35,6 +38,15 @@ export function validateCrawlSettings(settings: Partial<CrawlSettings>): CrawlSe
   }
 
   validated.excludeExtensions = validated.excludeExtensions || DEFAULT_CRAWL_SETTINGS.excludeExtensions
+
+  if (validated.performanceMode !== 'psi' && validated.performanceMode !== 'lighthouse') {
+    validated.performanceMode = DEFAULT_CRAWL_SETTINGS.performanceMode
+  }
+
+  const maxUrls = validated.performanceMaxUrls
+  if (typeof maxUrls !== 'number' || !Number.isFinite(maxUrls) || maxUrls < 1 || maxUrls > 100) {
+    validated.performanceMaxUrls = DEFAULT_CRAWL_SETTINGS.performanceMaxUrls
+  }
 
   return validated
 }

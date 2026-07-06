@@ -6,10 +6,13 @@ import { CrawlStorage } from './jobs/storage'
 import { parseSettingsJson } from '@seo-spider/shared'
 import { checkSoft404 } from '../lib/soft-404'
 import { OrphanDetector } from '../lib/orphans'
-import { DuplicatesDetector } from '../lib/duplicates-detector'
+import { NearDuplicatesDetector } from '../lib/near-duplicates'
+import { fetchSitemapUrls } from './crawl/sitemap-parser'
+import { ExternalLinkChecker } from './crawl/external-link-checker'
 import { CrawlSafetyChecker, CrawlSafetyConfig } from '../lib/crawl-safety'
 import { cleanupRenderer } from './crawl/js-renderer'
 import { SecurityAuditor } from './audit/security-auditor'
+import { runPerformanceAudit, PerformanceAuditMode } from './audit/performance-auditor'
 
 const prisma = new PrismaClient()
 
@@ -117,9 +120,16 @@ export async function runCrawl(
 
     const useJsRendering = (settings as any).jsRendering || false
     const runSecurityAudit = Boolean((settings as any).securityAudit)
+    const runPerformanceChecks = Boolean(settings.performanceAudit)
+    const performanceMode: PerformanceAuditMode =
+      settings.performanceMode === 'lighthouse' ? 'lighthouse' : 'psi'
+    const performanceMaxUrls = settings.performanceMaxUrls || 25
 
+    const startHostname = new URL(crawl.startUrl).hostname
+    const bareHostname = startHostname.replace(/^www\./, '')
     const safetyConfig: CrawlSafetyConfig = {
-      allowedDomains: [new URL(crawl.startUrl).hostname],
+      // The extractor treats www/non-www hosts as internal, so allow both variants
+      allowedDomains: Array.from(new Set([startHostname, bareHostname, `www.${bareHostname}`])),
       blockedDomains: [],
       maxPages: settings.maxPages,
       maxDepth: settings.maxDepth,
@@ -127,20 +137,46 @@ export async function runCrawl(
       startTime: Date.now(),
     }
     const safetyChecker = new CrawlSafetyChecker(safetyConfig)
-    const duplicatesDetector = new DuplicatesDetector()
+    const duplicatesDetector = new NearDuplicatesDetector()
+    const externalLinkChecker = new ExternalLinkChecker({ timeout: settings.timeout })
 
     if (settings.respectRobots) {
       await robotsParser.fetch()
       await storage.logEvent('INFO', 'Robots.txt fetched and parsed')
+    }
 
-      const sitemaps = robotsParser.getSitemaps()
-      for (const sitemapUrl of sitemaps) {
-        try {
-          await storage.logEvent('INFO', `Processing sitemap: ${sitemapUrl}`)
-        } catch (error) {
-          await storage.logEvent('WARN', `Failed to process sitemap ${sitemapUrl}: ${error}`)
+    // Seed the frontier from XML sitemaps: those listed in robots.txt,
+    // falling back to the conventional /sitemap.xml location.
+    let sitemapUrls = robotsParser.getSitemaps()
+    if (sitemapUrls.length === 0) {
+      sitemapUrls = [new URL('/sitemap.xml', crawl.startUrl).href]
+    }
+
+    try {
+      const sitemapResult = await fetchSitemapUrls(sitemapUrls, {
+        maxUrls: settings.maxPages,
+        timeout: settings.timeout,
+      })
+
+      let sitemapUrlsQueued = 0
+      for (const sitemapPageUrl of sitemapResult.urls) {
+        const safetyCheck = safetyChecker.isUrlSafe(sitemapPageUrl, 1)
+        if (safetyCheck.safe && frontier.add(sitemapPageUrl, 1)) {
+          sitemapUrlsQueued++
         }
       }
+
+      if (sitemapResult.sitemapsProcessed > 0) {
+        await storage.logEvent(
+          'INFO',
+          `Processed ${sitemapResult.sitemapsProcessed} sitemap(s): ${sitemapResult.urls.length} URLs found, ${sitemapUrlsQueued} queued`
+        )
+      }
+      for (const sitemapError of sitemapResult.errors.slice(0, 5)) {
+        await storage.logEvent('WARN', `Sitemap fetch failed: ${sitemapError}`)
+      }
+    } catch (error) {
+      await storage.logEvent('WARN', `Sitemap processing failed: ${error}`)
     }
 
     const extractor = new PageExtractor(crawlId, crawl.startUrl, settings, useJsRendering)
@@ -204,9 +240,8 @@ export async function runCrawl(
           await storage.savePage(result.pageData)
           orphanDetector.addCrawledUrl(result.pageData.url)
 
-          if (result.pageData.title && result.pageData.metaDescription) {
-            const content = `${result.pageData.title}\n${result.pageData.metaDescription}`
-            duplicatesDetector.addPage(result.pageData.url, content)
+          if (result.pageData.statusCode === 200) {
+            duplicatesDetector.addPage(result.pageData.url, result.contentText)
           }
 
           pagesCrawled++
@@ -214,6 +249,8 @@ export async function runCrawl(
           for (const link of result.links) {
             if (link.isInternal) {
               frontier.add(link.url, depth + 1)
+            } else {
+              externalLinkChecker.addLink(result.pageData.url, link.url)
             }
 
             await storage.saveLink(
@@ -319,13 +356,14 @@ export async function runCrawl(
       }
     }
 
-    const duplicateGroups = duplicatesDetector.findDuplicatePages()
+    const duplicateGroups = duplicatesDetector.findNearDuplicateGroups()
     await storage.logEvent(
       'INFO',
-      `Found ${duplicateGroups.length} groups of duplicate content`
+      `Found ${duplicateGroups.length} groups of duplicate or near-duplicate content`
     )
 
     for (const group of duplicateGroups) {
+      const isExact = group.similarity >= 100
       for (const url of group.urls.slice(1)) {
         await storage.saveIssue({
           crawlId,
@@ -334,8 +372,8 @@ export async function runCrawl(
           severity: 'MEDIUM',
           impact: 'MEDIUM',
           difficulty: 'MEDIUM',
-          title: 'Duplicate Content',
-          explanation: `This page has duplicate content with ${group.count - 1} other page(s). First found at: ${group.urls[0]}`,
+          title: isExact ? 'Duplicate Content' : 'Near-Duplicate Content',
+          explanation: `This page's content is at least ${group.similarity}% similar to ${group.count - 1} other page(s). First found at: ${group.urls[0]}`,
           fixSteps: [
             'Review all duplicate pages',
             'Decide which page should be the canonical version',
@@ -344,6 +382,46 @@ export async function runCrawl(
           ],
         })
         issuesFound++
+      }
+    }
+
+    if (externalLinkChecker.uniqueTargetCount > 0) {
+      await storage.logEvent(
+        'INFO',
+        `Validating ${externalLinkChecker.uniqueTargetCount} unique external links`
+      )
+
+      try {
+        const externalCheck = await externalLinkChecker.checkAll()
+
+        for (const [sourceUrl, brokenTargets] of externalCheck.brokenBySource.entries()) {
+          const targetSummaries = brokenTargets
+            .slice(0, 5)
+            .map((t) => `${t.url} (${t.statusCode > 0 ? t.statusCode : t.error || 'unreachable'})`)
+          await storage.saveIssue({
+            crawlId,
+            issueType: 'BROKEN_EXTERNAL_LINK',
+            url: sourceUrl,
+            severity: 'MEDIUM',
+            impact: 'MEDIUM',
+            difficulty: 'EASY',
+            title: 'Broken External Links',
+            explanation: `This page links to ${brokenTargets.length} external URL${brokenTargets.length === 1 ? '' : 's'} that could not be reached: ${targetSummaries.join(', ')}${brokenTargets.length > 5 ? ', …' : ''}`,
+            fixSteps: [
+              'Update or remove links to dead external pages',
+              'Link to an archived copy if the original content is gone',
+              'Check whether the destination site has moved the content',
+            ],
+          })
+          issuesFound++
+        }
+
+        await storage.logEvent(
+          'INFO',
+          `External link check completed: ${externalCheck.checkedCount} checked, ${externalCheck.brokenCount} broken`
+        )
+      } catch (error) {
+        await storage.logEvent('WARN', `External link validation failed: ${error}`)
       }
     }
 
@@ -521,6 +599,43 @@ export async function runCrawl(
         ],
       })
       issuesFound++
+    }
+
+    if (runPerformanceChecks) {
+      try {
+        // Sample the most prominent pages: shallowest first, then most linked
+        const samplePages = await prisma.page.findMany({
+          where: {
+            crawlId,
+            statusCode: 200,
+            contentType: { contains: 'html' },
+          },
+          orderBy: [{ depth: 'asc' }, { internalLinkCount: 'desc' }],
+          take: performanceMaxUrls,
+          select: { url: true },
+        })
+
+        const sampleUrls = samplePages.map((page) => page.url)
+        await storage.logEvent(
+          'INFO',
+          `Performance audit started (${performanceMode} mode, ${sampleUrls.length} pages)`
+        )
+
+        const performanceSummary = await runPerformanceAudit(
+          crawlId,
+          sampleUrls,
+          performanceMode,
+          storage
+        )
+        issuesFound += performanceSummary.issuesCreated
+
+        await storage.logEvent(
+          'INFO',
+          `Performance audit completed: ${performanceSummary.urlsAudited} pages audited, ${performanceSummary.urlsFailed} failed, ${performanceSummary.issuesCreated} issues`
+        )
+      } catch (error) {
+        await storage.logEvent('WARN', `Performance audit failed: ${error}`)
+      }
     }
 
     await prisma.crawl.update({

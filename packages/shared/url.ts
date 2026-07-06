@@ -32,7 +32,7 @@ export function normalizeUrl(url: string, baseUrl?: string): string {
       searchParams.delete(param.toUpperCase())
     }
     
-    parsedUrl.search = searchParams.toString().toLowerCase()
+    parsedUrl.search = searchParams.toString()
     
     return parsedUrl.href
   } catch {

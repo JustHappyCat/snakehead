@@ -18,11 +18,48 @@ interface PageRow {
   internalLinkCount: number
 }
 
+interface VitalsRow {
+  id: string
+  url: string
+  source: 'PSI_LAB' | 'CRUX_FIELD' | 'LIGHTHOUSE_LOCAL'
+  performanceScore: number | null
+  lcpMs: number | null
+  cls: number | null
+  inpMs: number | null
+  tbtMs: number | null
+  fcpMs: number | null
+  speedIndexMs: number | null
+  ttfbMs: number | null
+}
+
+const VITALS_SOURCE_LABELS: Record<VitalsRow['source'], string> = {
+  PSI_LAB: 'Lab (PSI)',
+  CRUX_FIELD: 'Field (CrUX)',
+  LIGHTHOUSE_LOCAL: 'Lab (local)',
+}
+
+function vitalBadge(
+  value: number | null,
+  needsImprovement: number,
+  poor: number,
+  format: (v: number) => string
+) {
+  if (value === null || value === undefined) {
+    return <span className="text-sm text-muted-foreground">—</span>
+  }
+  const color =
+    value > poor ? 'bg-red-500' : value > needsImprovement ? 'bg-yellow-500' : 'bg-green-500'
+  return (
+    <span className={`rounded px-2 py-0.5 text-xs text-white ${color}`}>{format(value)}</span>
+  )
+}
+
 export default function PerformancePage() {
   const params = useParams()
   const crawlId = params.id as string
   
   const [pages, setPages] = useState<PageRow[]>([])
+  const [vitals, setVitals] = useState<VitalsRow[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -32,10 +69,17 @@ export default function PerformancePage() {
   const fetchData = async () => {
     setLoading(true)
     try {
-      const pagesRes = await fetch(`/api/crawls/${crawlId}/pages?limit=10000`)
+      const [pagesRes, vitalsRes] = await Promise.all([
+        fetch(`/api/crawls/${crawlId}/pages?limit=10000`),
+        fetch(`/api/crawls/${crawlId}/vitals`),
+      ])
       if (pagesRes.ok) {
         const data = await pagesRes.json()
         setPages(data.pages || [])
+      }
+      if (vitalsRes.ok) {
+        const data = await vitalsRes.json()
+        setVitals(Array.isArray(data) ? data : [])
       }
     } catch (error) {
       console.error('Failed to fetch data:', error)
@@ -137,6 +181,101 @@ export default function PerformancePage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Gauge className="w-4 h-4 text-green-600" />
+            Core Web Vitals
+          </CardTitle>
+          <CardDescription>
+            Lighthouse lab metrics and real-user (CrUX) field data for sampled pages
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {vitals.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No Core Web Vitals data for this crawl. Enable the performance audit option when
+              starting a crawl to collect Lighthouse and CrUX metrics.
+            </p>
+          ) : (
+            <DataTable
+              data={vitals}
+              columns={[
+                {
+                  key: 'url',
+                  header: 'URL',
+                  cell: (row) => <span className="font-medium">{row.url}</span>,
+                  sortable: true,
+                },
+                {
+                  key: 'source',
+                  header: 'Source',
+                  cell: (row) => (
+                    <span className="text-xs text-muted-foreground">
+                      {VITALS_SOURCE_LABELS[row.source] || row.source}
+                    </span>
+                  ),
+                  sortable: true,
+                },
+                {
+                  key: 'performanceScore',
+                  header: 'Score',
+                  cell: (row) =>
+                    row.performanceScore === null ? (
+                      <span className="text-sm text-muted-foreground">—</span>
+                    ) : (
+                      <span
+                        className={`rounded px-2 py-0.5 text-xs text-white ${
+                          row.performanceScore < 50
+                            ? 'bg-red-500'
+                            : row.performanceScore < 90
+                              ? 'bg-yellow-500'
+                              : 'bg-green-500'
+                        }`}
+                      >
+                        {row.performanceScore}
+                      </span>
+                    ),
+                  sortable: true,
+                },
+                {
+                  key: 'lcpMs',
+                  header: 'LCP',
+                  cell: (row) => vitalBadge(row.lcpMs, 2500, 4000, (v) => `${(v / 1000).toFixed(1)}s`),
+                  sortable: true,
+                },
+                {
+                  key: 'cls',
+                  header: 'CLS',
+                  cell: (row) => vitalBadge(row.cls, 0.1, 0.25, (v) => v.toFixed(2)),
+                  sortable: true,
+                },
+                {
+                  key: 'inpMs',
+                  header: 'INP',
+                  cell: (row) => vitalBadge(row.inpMs, 200, 500, (v) => `${v}ms`),
+                  sortable: true,
+                },
+                {
+                  key: 'tbtMs',
+                  header: 'TBT',
+                  cell: (row) => vitalBadge(row.tbtMs, 200, 600, (v) => `${v}ms`),
+                  sortable: true,
+                },
+                {
+                  key: 'ttfbMs',
+                  header: 'TTFB',
+                  cell: (row) => vitalBadge(row.ttfbMs, 800, 1800, (v) => `${v}ms`),
+                  sortable: true,
+                },
+              ]}
+              isLoading={loading}
+              emptyMessage="No Core Web Vitals data"
+            />
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card>

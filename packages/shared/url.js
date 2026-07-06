@@ -33,7 +33,7 @@ function normalizeUrl(url, baseUrl) {
             searchParams.delete(param.toLowerCase());
             searchParams.delete(param.toUpperCase());
         }
-        parsedUrl.search = searchParams.toString().toLowerCase();
+        parsedUrl.search = searchParams.toString();
         return parsedUrl.href;
     }
     catch {

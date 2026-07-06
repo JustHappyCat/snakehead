@@ -67,6 +67,8 @@ export interface Event {
   message: string
 }
 
+export type PerformanceAuditMode = 'psi' | 'lighthouse'
+
 export interface CrawlSettings {
   maxPages: number
   maxDepth: number
@@ -74,6 +76,9 @@ export interface CrawlSettings {
   timeout: number
   respectRobots: boolean
   securityAudit?: boolean
+  performanceAudit?: boolean
+  performanceMode?: PerformanceAuditMode
+  performanceMaxUrls?: number
   allowlist?: string[]
   denylist?: string[]
   excludeExtensions?: string[]
